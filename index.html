@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clicker Game with WebGL</title>
+<style>
+  canvas {
+    display: block;
+    margin: 0 auto;
+    border: 5px solid #000; /* Add a border to the canvas */
+    border-radius: 10px;       /* Optional: Rounds the border edges */
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2); /* Optional: Adds a shadow effect */
+  }
+  #startButton {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  #failedScreen {
+    display: none;
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+</style>
+
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <button id="startButton">Start Game</button>
+  <div id="failedScreen">
+    <h1>Game Over!</h1>
+    <p id="levelText"></p>
+    <p>Press Enter to Restart or ESC to Exit</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const startButton = document.getElementById('startButton');
+    const failedScreen = document.getElementById('failedScreen');
+    const levelText = document.getElementById('levelText');
+
+    let balls = [];
+    let level = 1;
+    let gameTime = 60; // Initial game time
+    let timer;
+    let gameRunning = false;
+    let paused = false;
+    let gamePausedTime = 0;
+    let lastUpdateTime = 0;
+
+    // Ball class
+    class Ball {
+  constructor(x, y, radius, color) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.color = color;
+  }
+  draw() {
+    // Create a radial gradient to simulate lighting
+    const gradient = ctx.createRadialGradient(
+      this.x - this.radius / 3, // Light source slightly offset for realism
+      this.y - this.radius / 3,
+      this.radius / 10, // Inner radius for the light effect
+      this.x,
+      this.y,
+      this.radius // Outer radius for the gradient
+    );
+    gradient.addColorStop(0, 'white'); // Light color at the center
+    gradient.addColorStop(0.4, this.color); // Base color blending in
+    gradient.addColorStop(1, 'black'); // Shadow on the edges
+
+    // Use the gradient as the fill style
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.closePath();
+  }
+
+
+      moveUp() {
+        this.y -= 5;
+      }
+    }
+
+    // Generate random color for balls
+    function getRandomColor() {
+      const letters = '0123456789ABCDEF';
+      let color = '#';
+      for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+
+ let keysPressed = {}; // Track pressed keys
+
+// Handle key events
+document.addEventListener('keydown', (event) => {
+  if (!keysPressed[event.key]) { // Check if the key is already pressed
+    keysPressed[event.key] = true; // Mark the key as pressed
+    if (event.key === ' ' && gameRunning && !paused) {
+      balls.forEach(ball => ball.moveUp());
+    } else if (event.key === 'p' && gameRunning) {
+      pauseGame();
+    } else if (event.key === 'r' && paused) {
+      resumeGame();
+    } else if (event.key === 'Escape') {
+      exitGame();
+    } else if (event.key === 'Enter' && !gameRunning) {
+      restartGame();
+    }
+  }
+});
+
+document.addEventListener('keyup', (event) => {
+  keysPressed[event.key] = false; // Reset the key state when released
+});
+
+    // Start the game
+    startButton.addEventListener('click', startGame);
+
+    function startGame() {
+      gameRunning = true;
+      startButton.style.display = 'none';
+      resetGame();
+      lastUpdateTime = Date.now();
+      timer = setInterval(updateTime, 1000);
+      gameLoop();
+    }
+
+    function resetGame() {
+      balls = [];
+      level = 1;
+      gameTime = 60; // Reset game time to 60 seconds at the start of the game
+      // Adjust the gameTime based on the level
+      if (level === 1) {
+        gameTime = 3;
+      } else if (level === 2) {
+        gameTime = 4;
+      } else if (level === 3) {
+        gameTime = 5;
+      } else if (level === 4) {
+        gameTime = 7;
+      } else if (level === 5) {
+        gameTime = 8;
+      }
+      // Create 5 balls with random colors and positions
+      for (let i = 0; i < 5; i++) {
+        balls.push(new Ball(Math.random() * canvas.width, canvas.height - 30, 15, getRandomColor()));
+      }
+    }
+
+    function gameLoop() {
+      if (!gameRunning || paused) return;
+      requestAnimationFrame(gameLoop);
+      let deltaTime = (Date.now() - lastUpdateTime) / 1000;
+      lastUpdateTime = Date.now();
+      updateGame(deltaTime);
+      renderGame();
+    }
+
+    function updateGame(deltaTime) {
+      // Check for level progression
+      if (balls[0].y <= getYellowLineY()) {
+        level++;
+        if (level > 5) {
+          gameOver();
+        } else {
+          // Move yellow line higher
+          balls.forEach(ball => ball.y = canvas.height - 30); // Reset balls to bottom
+          // Adjust the gameTime based on the new level
+          if (level === 1) {
+            gameTime = 3;
+          } else if (level === 2) {
+            gameTime = 4;
+          } else if (level === 3) {
+            gameTime = 5;
+          } else if (level === 4) {
+            gameTime = 7;
+          } else if (level === 5) {
+            gameTime = 8;
+          }
+        }
+      }
+      // If time runs out
+      if (gameTime <= 0) {
+        gameOver();
+      }
+    }
+
+ function renderGame() {
+  // Set the background color to dark gray
+  ctx.fillStyle = '#2f2f2f'; // Dark gray color
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw the yellow line for level progression
+  ctx.beginPath();
+  ctx.moveTo(0, getYellowLineY());
+  ctx.lineTo(canvas.width, getYellowLineY());
+  ctx.strokeStyle = 'yellow';
+  ctx.stroke();
+
+  // Draw the balls
+  balls.forEach(ball => ball.draw());
+
+  // Display level and time
+  ctx.font = '20px Arial';
+  ctx.fillStyle = 'white'; // White text for contrast against the dark gray background
+  ctx.fillText(Level: ${level}, 20, 30);
+  ctx.fillText(Time: ${gameTime}, canvas.width - 100, 30);
+}
+
+
+    function getYellowLineY() {
+      return canvas.height - level * 50; // Yellow line moves up with each level
+    }
+
+    function updateTime() {
+      if (gameRunning && !paused) {
+        gameTime--; // Decrease the game time every second
+      }
+    }
+
+function pauseGame() {
+  if (!paused) {
+    paused = true;
+    clearInterval(timer); // Stop the timer when paused
+  }
+}
+
+function resumeGame() {
+  if (paused) {
+    paused = false;
+    // Restart the timer from the current gameTime
+    timer = setInterval(updateTime, 1000);
+    lastUpdateTime = Date.now(); // Reset the time tracking for smoother gameLoop
+    gameLoop(); // Restart the game loop
+  }
+}
+
+    function gameOver() {
+      gameRunning = false;
+      clearInterval(timer);
+      levelText.textContent = You reached level ${level};
+      failedScreen.style.display = 'block';
+    }
+
+    function restartGame() {
+      failedScreen.style.display = 'none';
+      startGame();
+    }
+
+    function exitGame() {
+      window.close(); // Close the window or handle appropriately
+    }
+
+    // Set canvas size
+    canvas.width = 800;
+    canvas.height = 600;
+  </script>
+</body>
+</html>
